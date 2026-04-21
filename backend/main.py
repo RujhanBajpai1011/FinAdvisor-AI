@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 SECRET_KEY = "your-secret-key-change-in-production"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your-gemini-api-key")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBaDA5TlkYvQqUhDjCq0amzG6VigCLlzx8")
 genai.configure(api_key=GEMINI_API_KEY)
 
 
