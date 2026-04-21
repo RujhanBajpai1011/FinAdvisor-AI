@@ -120,7 +120,7 @@ async def generate_report(data: dict):
     doc.build(story)
     return FileResponse(filename, media_type="application/pdf", filename="FinancialReport.pdf")
   
- if __name__ == "__main__":
-     import uvicorn
-     uvicorn.run(app, host="0.0.0.0", port=8000)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
   
