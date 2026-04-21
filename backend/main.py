@@ -19,8 +19,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], # OPTIONS add karna zaruri hai
+    allow_headers=["Content-Type", "Authorization", "Accept"], # Specific headers
 )
 SECRET_KEY = "your-secret-key-change-in-production"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBaDA5TlkYvQqUhDjCq0amzG6VigCLlzx8")
@@ -30,7 +30,11 @@ genai.configure(api_key=GEMINI_API_KEY)
 class LoginRequest(BaseModel):
      email: str
      password: str
- 
+@app.options("/{rest_of_path:path}")
+async def preflight_handler():
+    return {}
+
+
 @app.post("/auth/login")
 async def login(req: LoginRequest):
     # In production: verify against DB, hash passwords
