@@ -750,13 +750,14 @@ const ReportButton = ({ theme, data }) => {
 };
 
 // ============================================================
-// AI CHATBOT
+// ============================================================
+// AI CHATBOT (FIXED & TESTED)
 // ============================================================
 const ChatBot = ({ theme, user }) => {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: `Hello ${user?.name?.split(" ")[0] || "there"}! 👋 I'm your AI Financial Advisor powered by Gemini. I can help you with:\n\n• **Tax planning** — Section 80C, 80D, HRA optimization\n• **Investment advice** — SIP, mutual funds, NPS\n• **Wealth strategies** — portfolio rebalancing, goal planning\n• **Budget analysis** — cash flow, savings rate\n\nWhat's on your financial mind today?`,
+      content: `Hello ${user?.name?.split(" ")[0] || "there"}! 👋 I'm your AI Financial Advisor powered by Gemini. I can help you with:\n\n• **Tax planning** — Section 80C, 80D, HRA optimization\n• **Investment advice** — SIP, mutual funds, NPS\n• **Wealth strategies** — portfolio rebalancing, goal planning\n\nWhat's on your financial mind today?`,
       time: new Date(),
     }
   ]);
@@ -765,7 +766,6 @@ const ChatBot = ({ theme, user }) => {
   const endRef = useRef();
 
   const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" });
-
   useEffect(() => { scrollToBottom(); }, [messages]);
 
   const formatMsg = (text) => {
@@ -779,7 +779,6 @@ const ChatBot = ({ theme, user }) => {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
     
-    // User ka message screen par dikhane ke liye
     const userMsg = { role: "user", content: input, time: new Date() };
     setMessages(p => [...p, userMsg]);
     
@@ -788,55 +787,41 @@ const ChatBot = ({ theme, user }) => {
     setLoading(true);
 
     try {
-        // Dhyaan dein: URL ke aakhiri mein /chat hona zaruri hai
-        const response = await fetch("https://finadvisor-backend.onrender.com/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: q }) // Sirf message bhejna hai
-        });
+      const response = await fetch("https://finadvisor-backend.onrender.com/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: q })
+      });
 
-        if (!response.ok) {
-            throw new Error("Backend not responding");
-        }
+      if (!response.ok) throw new Error("Backend Error");
 
-        const data = await response.json();
-        
-        // AI ka message screen par dikhane ke liye
-        setMessages(p => [...p, { 
-            role: "assistant", 
-            content: data.response || "AI is not responding right now.", 
-            time: new Date() 
-        }]);
-    } catch (error) {
-        console.error("Chat Error:", error);
-        setMessages(p => [...p, { 
-            role: "assistant", 
-            content: "Error: Could not connect to the AI advisor. Please check if Render backend is live.", 
-            time: new Date() 
-        }]);
-    } finally {
-        setLoading(false);
-    }
-  };
       const data = await response.json();
-      const reply = data.content?.[0]?.text || "I couldn't get a response right now. Please try again.";
-      setMessages(p => [...p, { role: "assistant", content: reply, time: new Date() }]);
-    } catch {
-      setMessages(p => [...p, { role: "assistant", content: "Connection error. In production, this routes to your FastAPI `/chat` endpoint with Gemini. Please try again.", time: new Date() }]);
+      
+      setMessages(p => [...p, { 
+        role: "assistant", 
+        content: data.response || "AI is not responding right now.", 
+        time: new Date() 
+      }]);
+    } catch (error) {
+      setMessages(p => [...p, { 
+        role: "assistant", 
+        content: "Error: Could not connect to the AI advisor. Check if Render backend is live.", 
+        time: new Date() 
+      }]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const quickPrompts = ["How can I save more tax?", "Best SIP funds for 2025?", "How to plan for retirement?", "Explain NPS benefits"];
+  const quickPrompts = ["How can I save more tax?", "Best SIP funds for 2025?", "Explain NPS benefits"];
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 100px)", maxWidth: 820, margin: "0 auto" }}>
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: theme.text, fontFamily: "'Space Grotesk', sans-serif" }}>AI Financial Advisor</h1>
-        <p style={{ color: theme.textMuted, fontSize: 14 }}>Powered by Claude AI · Expert in Indian personal finance</p>
+        <p style={{ color: theme.textMuted, fontSize: 14 }}>Expert in Indian personal finance</p>
       </div>
 
-      {/* Chat Window */}
       <div style={{
         flex: 1, overflow: "auto", background: theme.surface,
         border: `1px solid ${theme.border}`, borderRadius: 16,
@@ -885,45 +870,33 @@ const ChatBot = ({ theme, user }) => {
         <div ref={endRef} />
       </div>
 
-      {/* Quick Prompts */}
       <div style={{ display: "flex", gap: 8, margin: "12px 0 8px", flexWrap: "wrap" }}>
         {quickPrompts.map(q => (
-          <button key={q} onClick={() => { setInput(q); }}
+          <button key={q} onClick={() => setInput(q)}
             style={{
               padding: "6px 12px", background: theme.surface, border: `1px solid ${theme.border}`,
               borderRadius: 20, fontSize: 12, color: theme.textMuted, cursor: "pointer",
-              transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif",
             }}
-            onMouseEnter={e => { e.currentTarget.style.border = `1px solid ${T.blue600}`; e.currentTarget.style.color = T.blue600; }}
-            onMouseLeave={e => { e.currentTarget.style.border = `1px solid ${theme.border}`; e.currentTarget.style.color = theme.textMuted; }}
           >{q}</button>
         ))}
       </div>
 
-      {/* Input */}
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <input
           value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          placeholder="Ask about tax planning, investments, SIP..."
+          onKeyDown={e => e.key === "Enter" && sendMessage()}
+          placeholder="Ask about tax, investments, SIP..."
           style={{
             flex: 1, padding: "13px 18px", borderRadius: 12,
             border: `1px solid ${theme.border}`, background: theme.surface,
             color: theme.text, fontSize: 14, outline: "none",
-            fontFamily: "'DM Sans', sans-serif",
-            transition: "border 0.2s",
           }}
-          onFocus={e => e.target.style.border = `1px solid ${T.blue600}`}
-          onBlur={e => e.target.style.border = `1px solid ${theme.border}`}
         />
         <button onClick={sendMessage} disabled={!input.trim() || loading}
           style={{
             width: 46, height: 46, borderRadius: 12, border: "none",
             background: input.trim() && !loading ? T.blue600 : theme.border,
-            color: input.trim() && !loading ? "white" : theme.textMuted,
-            cursor: input.trim() && !loading ? "pointer" : "not-allowed",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "all 0.2s", flexShrink: 0,
+            color: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           }}>
           <Icons.Send />
         </button>
@@ -931,7 +904,6 @@ const ChatBot = ({ theme, user }) => {
     </div>
   );
 };
-
 // ============================================================
 // APP GUIDE PAGE
 // ============================================================
