@@ -454,23 +454,35 @@ const HomePage = ({ theme, onDataLoaded }) => {
   const fileRef = useRef();
 
   const handleFile = async (f) => {
-    if (!f || f.type !== "application/pdf") { alert("Please upload a PDF file"); return; }
+    if (!f || f.type !== "application/pdf") { 
+        alert("Please upload a PDF file"); 
+        return; 
+    }
     setFile(f);
     setProcessing(true);
-    // Simulate API call to POST /parse-form16
-    await new Promise(r => setTimeout(r, 2200));
-    const mockExtracted = {
-      gross_salary: 1200000,
-      tax_deducted: 145000,
-      investments_80c: 150000,
-      hra_exemption: 72000,
-      net_taxable_income: 978000,
-    };
-    setExtractedData(mockExtracted);
-    setProcessing(false);
-    setProcessed(true);
-    onDataLoaded?.(mockExtracted);
-  };
+    setProcessed(false);
+
+    const formData = new FormData();
+    formData.append("file", f);
+
+    try {
+        const response = await fetch("https://finadvisor-backend.onrender.com/parse-form16", {
+            method: "POST",
+            body: formData,
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            setExtractedData(result.data);
+            onDataLoaded?.(result.data);
+            setProcessed(true);
+        }
+    } catch (error) {
+        console.error("Upload Error:", error);
+        alert("Backend connection failed!");
+    } finally {
+        setProcessing(false);
+    }
+};
 
   return (
     <div className="fade-in" style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -766,27 +778,46 @@ const ChatBot = ({ theme, user }) => {
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
+    
+    // User ka message screen par dikhane ke liye
     const userMsg = { role: "user", content: input, time: new Date() };
     setMessages(p => [...p, userMsg]);
+    
     const q = input;
     setInput("");
     setLoading(true);
 
-    // Call Anthropic API via the artifact API pattern
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are an expert Indian financial advisor named FinBot. Provide concise, practical advice on Indian personal finance: income tax (IT Act), Section 80C/80D/24B deductions, mutual funds, SIP, NPS, ELSS, HRA, PPF, EPF, real estate, and general wealth management. Keep responses clear and actionable. Use ₹ for amounts. Format with bullet points where helpful.`,
-          messages: [
-            ...messages.slice(-8).map(m => ({ role: m.role, content: m.content })),
-            { role: "user", content: q }
-          ],
-        })
-      });
+        // Dhyaan dein: URL ke aakhiri mein /chat hona zaruri hai
+        const response = await fetch("https://finadvisor-backend.onrender.com/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: q }) // Sirf message bhejna hai
+        });
+
+        if (!response.ok) {
+            throw new Error("Backend not responding");
+        }
+
+        const data = await response.json();
+        
+        // AI ka message screen par dikhane ke liye
+        setMessages(p => [...p, { 
+            role: "assistant", 
+            content: data.response || "AI is not responding right now.", 
+            time: new Date() 
+        }]);
+    } catch (error) {
+        console.error("Chat Error:", error);
+        setMessages(p => [...p, { 
+            role: "assistant", 
+            content: "Error: Could not connect to the AI advisor. Please check if Render backend is live.", 
+            time: new Date() 
+        }]);
+    } finally {
+        setLoading(false);
+    }
+  };
       const data = await response.json();
       const reply = data.content?.[0]?.text || "I couldn't get a response right now. Please try again.";
       setMessages(p => [...p, { role: "assistant", content: reply, time: new Date() }]);
