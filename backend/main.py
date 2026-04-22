@@ -227,7 +227,7 @@ async def parse_form16(file: UploadFile = File(...)):
     # FIX #3: Reconfigure Gemini at request time to ensure it's active
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         prompt = f"""Extract financial data from this Indian Form 16 document.
 Return ONLY a JSON object with these exact keys (numeric values, no commas, no currency symbols):
@@ -280,7 +280,7 @@ async def chat(req: ChatRequest):
         genai.configure(api_key=GEMINI_API_KEY)
 
         model = genai.GenerativeModel(
-            "gemini-1.5-flash",
+            "gemini-2.0-flash",
             system_instruction="""You are FinBot, an expert Indian financial advisor.
 Provide clear, concise, actionable advice on:
 - Indian Income Tax (IT Act 1961), TDS, ITR filing
@@ -294,18 +294,21 @@ Always mention SEBI/RBI compliance where relevant.
 Respond in the same language the user writes in.""",
         )
 
-        # FIX: Validate history format strictly to prevent 500s
+        # FIX: Map "assistant" → "model" because Gemini API requires "model" role
+        # Frontend sends "assistant" but Gemini only accepts "user" or "model"
         clean_history = []
         for h in req.history[-10:]:
-            if (
-                isinstance(h, dict)
-                and h.get("role") in ("user", "model")
-                and isinstance(h.get("content"), str)
-                and h["content"].strip()
-            ):
+            if not isinstance(h, dict):
+                continue
+            role = h.get("role", "")
+            content = h.get("content", "")
+            # Map assistant → model for Gemini
+            if role == "assistant":
+                role = "model"
+            if role in ("user", "model") and isinstance(content, str) and content.strip():
                 clean_history.append({
-                    "role": h["role"],
-                    "parts": [h["content"]]
+                    "role": role,
+                    "parts": [content]
                 })
 
         chat_session = model.start_chat(history=clean_history)
