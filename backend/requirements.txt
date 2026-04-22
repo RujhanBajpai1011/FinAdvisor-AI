@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 pymupdf
-google-generativeai
+anthropic
 reportlab
-python-jose
+python-jose[cryptography]
 python-multipart
+pydantic
