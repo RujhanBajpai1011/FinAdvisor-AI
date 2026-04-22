@@ -227,7 +227,7 @@ async def parse_form16(file: UploadFile = File(...)):
     # FIX #3: Reconfigure Gemini at request time to ensure it's active
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
         prompt = f"""Extract financial data from this Indian Form 16 document.
 Return ONLY a JSON object with these exact keys (numeric values, no commas, no currency symbols):
@@ -280,7 +280,7 @@ async def chat(req: ChatRequest):
         genai.configure(api_key=GEMINI_API_KEY)
 
         model = genai.GenerativeModel(
-            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
             system_instruction="""You are FinBot, an expert Indian financial advisor.
 Provide clear, concise, actionable advice on:
 - Indian Income Tax (IT Act 1961), TDS, ITR filing
