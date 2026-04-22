@@ -1,6 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os, json, time
 from datetime import datetime
@@ -11,11 +11,11 @@ except ImportError:
     fitz = None
 
 try:
-    import google.generativeai as genai
-    GENAI_AVAILABLE = True
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
 except ImportError:
-    genai = None
-    GENAI_AVAILABLE = False
+    anthropic = None
+    ANTHROPIC_AVAILABLE = False
 
 try:
     from jose import jwt
@@ -33,16 +33,15 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
-app = FastAPI(title="FinAdvisor API", version="3.0")
+app = FastAPI(title="FinAdvisor API", version="4.0")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "finAdvisorSecretKey2025")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-if GEMINI_API_KEY and GENAI_AVAILABLE:
-    genai.configure(api_key=GEMINI_API_KEY)
-    print(f"Gemini configured: ...{GEMINI_API_KEY[-6:]}")
+if ANTHROPIC_API_KEY and ANTHROPIC_AVAILABLE:
+    print(f"✅ Anthropic Claude ready | Key: ...{ANTHROPIC_API_KEY[-6:]}")
 else:
-    print("WARNING: GEMINI_API_KEY not set")
+    print("⚠️  ANTHROPIC_API_KEY not set")
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,60 +52,6 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
 )
 
-# ── Helper: get working model name ────────────────────────────
-def get_gemini_model(system_instruction=None):
-    """
-    Try models in order — first one that works is used.
-    This handles different API key tiers automatically.
-    """
-    # Models to try in priority order
-    model_names = [
-        "models/gemini-2.0-flash",
-        "models/gemini-2.0-flash-lite",
-        "models/gemini-1.5-flash",
-        "models/gemini-1.5-flash-latest",
-        "models/gemini-1.5-pro",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
-        "gemini-pro",
-    ]
-    genai.configure(api_key=GEMINI_API_KEY)
-
-    # First try to get available models from API
-    try:
-        available = [
-            m.name for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods
-        ]
-        print(f"Available models: {available}")
-        # Pick first available from our priority list
-        for name in model_names:
-            if name in available:
-                if system_instruction:
-                    return genai.GenerativeModel(name, system_instruction=system_instruction)
-                return genai.GenerativeModel(name)
-    except Exception as e:
-        print(f"list_models failed: {e}")
-
-    # Fallback: try each name directly
-    for name in model_names:
-        try:
-            if system_instruction:
-                m = genai.GenerativeModel(name, system_instruction=system_instruction)
-            else:
-                m = genai.GenerativeModel(name)
-            # Quick test
-            m.generate_content("hi")
-            print(f"Using model: {name}")
-            return m
-        except Exception:
-            continue
-
-    raise HTTPException(status_code=503, detail="No Gemini model available for your API key. Visit /list-models to check.")
-
-
-# ── Models ────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -122,14 +67,13 @@ class ReportRequest(BaseModel):
     tax_saved: float = 46500
     monthly_savings: float = 38500
 
-# ── Routes ────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
     return {
-        "message": "FinAdvisor API v3 Running!",
         "status": "ok",
-        "gemini_ready": bool(GEMINI_API_KEY and GENAI_AVAILABLE),
+        "message": "FinAdvisor API v4.0 — Powered by Claude AI",
+        "ai_ready": bool(ANTHROPIC_API_KEY and ANTHROPIC_AVAILABLE),
     }
 
 
@@ -138,32 +82,11 @@ async def health():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "gemini_configured": bool(GEMINI_API_KEY and GENAI_AVAILABLE),
-        "gemini_key_set": bool(GEMINI_API_KEY),
+        "claude_configured": bool(ANTHROPIC_API_KEY and ANTHROPIC_AVAILABLE),
+        "anthropic_key_set": bool(ANTHROPIC_API_KEY),
         "pymupdf_available": fitz is not None,
         "reportlab_available": REPORTLAB_AVAILABLE,
-        "jose_available": JOSE_AVAILABLE,
     }
-
-
-@app.get("/list-models")
-async def list_models():
-    """
-    Visit: https://finadvisor-backend.onrender.com/list-models
-    Ye dikhayega tumhare API key ke liye kaun se models available hain
-    """
-    if not GEMINI_API_KEY or not GENAI_AVAILABLE:
-        return {"error": "GEMINI_API_KEY not set"}
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        models = genai.list_models()
-        available = [
-            m.name for m in models
-            if "generateContent" in m.supported_generation_methods
-        ]
-        return {"available_models": available, "total": len(available)}
-    except Exception as e:
-        return {"error": str(e)}
 
 
 @app.post("/auth/login")
@@ -174,15 +97,13 @@ async def login(req: LoginRequest):
         if JOSE_AVAILABLE:
             token = jwt.encode(
                 {"sub": req.email, "exp": int(time.time()) + 86400, "iat": int(time.time())},
-                SECRET_KEY,
-                algorithm="HS256",
+                SECRET_KEY, algorithm="HS256",
             )
         else:
             import base64
             token = base64.b64encode(req.email.encode()).decode()
         return {
-            "access_token": token,
-            "token_type": "bearer",
+            "access_token": token, "token_type": "bearer",
             "user": {"email": req.email, "name": req.email.split("@")[0].title()},
         }
     except Exception as e:
@@ -204,6 +125,7 @@ async def parse_form16(file: UploadFile = File(...)):
         "net_taxable_income": 990000,
     }
 
+    # Extract text from PDF
     extracted_text = ""
     if fitz is not None:
         try:
@@ -211,18 +133,20 @@ async def parse_form16(file: UploadFile = File(...)):
             for page in doc:
                 extracted_text += page.get_text()
             doc.close()
+            print(f"✅ PDF text extracted: {len(extracted_text)} chars")
         except Exception as e:
             print(f"PDF parse error: {e}")
     else:
         return {"status": "success", "data": fallback_data, "note": "PyMuPDF unavailable"}
 
-    if not GEMINI_API_KEY or not GENAI_AVAILABLE:
-        return {"status": "success", "data": fallback_data, "note": "GEMINI_API_KEY not set"}
+    if not ANTHROPIC_API_KEY or not ANTHROPIC_AVAILABLE:
+        return {"status": "success", "data": fallback_data, "note": "ANTHROPIC_API_KEY not set"}
 
     try:
-        model = get_gemini_model()
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
         prompt = f"""Extract financial data from this Indian Form 16 document.
-Return ONLY a JSON object with these exact keys (numeric values only, no commas, no symbols):
+Return ONLY a JSON object with these exact keys (numeric values, no commas, no symbols):
 {{
   "gross_salary": <number>,
   "tax_deducted": <number>,
@@ -233,20 +157,24 @@ Return ONLY a JSON object with these exact keys (numeric values only, no commas,
 Document text: {extracted_text[:3000] if extracted_text else "No text extracted"}
 If value not found, use 0. Return ONLY valid JSON, nothing else."""
 
-        response = model.generate_content(prompt)
-        raw = response.text.strip()
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        raw = message.content[0].text.strip()
         if raw.startswith("```"):
             lines = raw.split("\n")
-            raw = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+            raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
         data = json.loads(raw)
+        print(f"✅ Extracted: {data}")
         return {"status": "success", "data": data}
 
     except json.JSONDecodeError:
         return {"status": "success", "data": fallback_data, "note": "JSON parse failed"}
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Gemini error: {e}")
+        print(f"Claude error in parse-form16: {e}")
         return {"status": "success", "data": fallback_data, "note": str(e)}
 
 
@@ -254,44 +182,52 @@ If value not found, use 0. Return ONLY valid JSON, nothing else."""
 async def chat(req: ChatRequest):
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    if not GEMINI_API_KEY or not GENAI_AVAILABLE:
-        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
+    if not ANTHROPIC_API_KEY or not ANTHROPIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set in Render Environment")
 
     try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
         system = """You are FinBot, an expert Indian financial advisor.
-Give clear, concise advice on Indian Income Tax, Section 80C/80D/HRA,
-mutual funds, SIP, ELSS, PPF, NPS, EPF, and wealth management.
+Give clear, concise, actionable advice on:
+- Indian Income Tax (IT Act 1961), TDS, ITR filing
+- Section 80C, 80D, 80CCD, HRA, LTA deductions
+- Mutual funds, SIP, ELSS, PPF, NPS, EPF
+- Real estate, REIT, wealth management, retirement planning
 Keep responses under 250 words. Use bullet points. Use Rs. for amounts.
 Respond in the same language the user writes in."""
 
-        model = get_gemini_model(system_instruction=system)
-
-        # Map assistant → model for Gemini API
-        clean_history = []
+        # Build messages array for Claude
+        messages = []
         for h in req.history[-10:]:
             if not isinstance(h, dict):
                 continue
             role = h.get("role", "")
             content = h.get("content", "")
-            if role == "assistant":
-                role = "model"
-            if role in ("user", "model") and isinstance(content, str) and content.strip():
-                clean_history.append({"role": role, "parts": [content]})
+            # Claude accepts "user" and "assistant" directly (no mapping needed)
+            if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+                messages.append({"role": role, "content": content})
 
-        chat_session = model.start_chat(history=clean_history)
-        msg = f"Financial profile: {json.dumps(req.user_data)}\n\n{req.message}" if req.user_data else req.message
-        response = chat_session.send_message(msg)
-        return {"response": response.text, "status": "success"}
+        # Add current message
+        user_msg = f"Financial profile: {json.dumps(req.user_data)}\n\n{req.message}" if req.user_data else req.message
+        messages.append({"role": "user", "content": user_msg})
 
-    except HTTPException:
-        raise
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system=system,
+            messages=messages,
+        )
+
+        return {"response": response.content[0].text, "status": "success"}
+
     except Exception as e:
         err = str(e)
         print(f"Chat error: {err}")
-        if "quota" in err.lower() or "429" in err:
-            raise HTTPException(status_code=429, detail="Gemini API quota exceeded. Try again later.")
-        if "api key" in err.lower() or "API_KEY" in err:
-            raise HTTPException(status_code=500, detail="Invalid GEMINI_API_KEY")
+        if "credit" in err.lower() or "billing" in err.lower():
+            raise HTTPException(status_code=429, detail="Anthropic API credit exhausted. Add credits at console.anthropic.com")
+        if "api_key" in err.lower() or "authentication" in err.lower():
+            raise HTTPException(status_code=500, detail="Invalid ANTHROPIC_API_KEY — check Render environment variables")
         raise HTTPException(status_code=500, detail=f"Chat error: {err}")
 
 
@@ -301,7 +237,8 @@ async def generate_report(data: ReportRequest):
         raise HTTPException(status_code=503, detail="ReportLab not installed")
     try:
         filename = f"/tmp/fin_report_{int(time.time())}.pdf"
-        doc = SimpleDocTemplate(filename, pagesize=letter, rightMargin=60, leftMargin=60, topMargin=60, bottomMargin=60)
+        doc = SimpleDocTemplate(filename, pagesize=letter,
+                                rightMargin=60, leftMargin=60, topMargin=60, bottomMargin=60)
         styles = getSampleStyleSheet()
         story = []
 
@@ -350,10 +287,14 @@ async def generate_report(data: ReportRequest):
             story.append(Spacer(1, 8))
 
         story.append(Spacer(1, 16))
-        story.append(Paragraph("<i>Disclaimer: For informational purposes only. Consult a SEBI-registered advisor.</i>", styles["Normal"]))
+        story.append(Paragraph(
+            "<i>Disclaimer: For informational purposes only. Consult a SEBI-registered advisor.</i>",
+            styles["Normal"]
+        ))
         doc.build(story)
 
-        return FileResponse(filename, media_type="application/pdf", filename="FinAdvisor_Report.pdf",
+        return FileResponse(filename, media_type="application/pdf",
+                            filename="FinAdvisor_Report.pdf",
                             headers={"Content-Disposition": "attachment; filename=FinAdvisor_Report.pdf"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report error: {str(e)}")
