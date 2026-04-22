@@ -37,7 +37,7 @@ app = FastAPI(title="FinAdvisor API", version="5.0")
 
 SECRET_KEY  = os.getenv("SECRET_KEY", "finAdvisorSecretKey2025")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = "llama3-8b-8192"   # free, fast, always available on Groq
+GROQ_MODEL   = "llama-3.3-70b-versatile"  # fallback default
 
 if GROQ_API_KEY and GROQ_AVAILABLE:
     print(f"✅ Groq ready | Model: {GROQ_MODEL} | Key: ...{GROQ_API_KEY[-6:]}")
@@ -52,6 +52,55 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
+
+# ── Auto-detect working Groq model ───────────────────────────
+def get_groq_model() -> str:
+    """
+    Try models in priority order — return first one that works.
+    This means even if Groq deprecates a model, app keeps working.
+    """
+    CANDIDATE_MODELS = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama3-70b-8192",
+        "llama-3.1-8b-instant",
+        "llama3-8b-8192",
+        "gemma2-9b-it",
+        "mixtral-8x7b-32768",
+    ]
+    if not GROQ_API_KEY or not GROQ_AVAILABLE:
+        return CANDIDATE_MODELS[0]
+
+    client = Groq(api_key=GROQ_API_KEY)
+
+    # Get list of available models from Groq API
+    try:
+        available = [m.id for m in client.models.list().data]
+        print(f"✅ Groq available models: {available}")
+        for model in CANDIDATE_MODELS:
+            if model in available:
+                print(f"✅ Using Groq model: {model}")
+                return model
+    except Exception as e:
+        print(f"⚠️  Could not list Groq models: {e}")
+
+    # Fallback: try each model with a real call
+    for model in CANDIDATE_MODELS:
+        try:
+            client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=5,
+            )
+            print(f"✅ Groq fallback model working: {model}")
+            return model
+        except Exception:
+            continue
+
+    # Last resort
+    return CANDIDATE_MODELS[0]
+
+
 
 # ── Pydantic Models ───────────────────────────────────────────
 class LoginRequest(BaseModel):
@@ -159,7 +208,7 @@ Document text: {extracted_text[:3000] if extracted_text else "No text extracted"
 If a value is not found, use 0. Return ONLY the JSON object, no explanation, no markdown."""
 
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=get_groq_model(),
             messages=[
                 {"role": "system", "content": "You are a financial data extractor. Return only valid JSON, nothing else."},
                 {"role": "user", "content": prompt}
@@ -221,7 +270,7 @@ Respond in the same language the user writes in (Hindi or English)."""
         messages.append({"role": "user", "content": user_msg})
 
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=get_groq_model(),
             messages=messages,
             temperature=0.7,
             max_tokens=1024,
